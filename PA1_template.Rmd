@@ -1,25 +1,139 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: 'REPDATA-016: Programming Assignment 1'
+author: "Andy Phillips"
+date: "December 9, 2014"
+output: html_document
 ---
 
+### Loading and preprocessing the data
 
-## Loading and preprocessing the data
+I make use of the **dplyr**, **lubridate** libraries for easier table and date manipulations and **ggplot2** for the final chart. Preprocessing steps are simply:  
+  
+1. Read the csv file and make it into a data frame table.
+2. Fix the date field to be in POSIXct format.
+
+```{r preprocessing}
+library(dplyr, warn.conflicts=FALSE)
+library(lubridate)
+library(ggplot2)
+
+myTable <- read.csv("activity.csv", stringsAsFactors=FALSE, na.strings="NA") %>%
+  tbl_df() %>%
+  mutate(date=ymd(date))
+
+```
+
+### What is mean total number of steps taken per day?
+
+To calculate this I take the table created in the preprocessing stage and  
+  
+1. Filter out "NA"step entries.
+2. Group the table by date.
+3. Summarize the table by sum of steps per day.
+4. Finally calculate the mean and median of all steps taken per day, and store them in two variables for in-line output below.
+
+```{r filter&sort}
+
+mySummaryTable <- filter(myTable, !is.na(steps)) %>%
+  group_by(date) %>%
+  summarize(sum(steps))
+colnames(mySummaryTable) <- c("date", "sum")
+meanTotalStepsPerDay <- as.integer(mean(mySummaryTable$sum))
+medianTotalStepsPerDay <- median(mySummaryTable$sum)
+```
+
+The mean total number of steps taken per day is ***`r meanTotalStepsPerDay`*** and the median is ***`r medianTotalStepsPerDay`***.  
+  
+A histogram of the total steps per day is shown below (with code):
+
+```{r histogram}
+hist(mySummaryTable$sum, col="red", xlab = "Total Steps per Day", main = "Total Steps by Day", breaks=24)
+```
+
+### What is the average daily activity pattern?
+
+This is similar to the last section, except I am now grouping the data by interval rather than date before summarising.   
+  
+
+```{r filter&sort2}
+myIntervalTable <- filter(myTable, !is.na(steps)) %>%
+        group_by(interval) %>%
+        summarize(mean(steps))
+colnames(myIntervalTable) <- c("interval", "steps")
+plot(myIntervalTable, type="l", xlab="Average Steps taken per Interval", ylab="Interval")
+myIntervalTable <- arrange(myIntervalTable, desc(steps))
+
+```
+
+As a last step I sort the table by average steps in descending order, so that the interval with the highest average step count will be first, for inline output below (via `myIntervalTable[1,1] & myIntervalTable[1,2`) 
+
+The time interval with the max number of average steps is **`r myIntervalTable[1,1]`** in which an average of **`r as.integer(myIntervalTable[1,2])`** steps are taken.
+
+### Imputing missing values
+
+To get the total number of rows with missing values I calculate the sum of rows of the original table read into memory where the is.na() function evaluates to true on the steps column.  
+
+```{r findNA}
+sum(is.na(myTable$steps))
+```
+
+To impute missing values I loop through the full table and replace each occurence of NA in the steps column with the corresponding mean steps value for that interval time, taken from the table in the last section
+
+```{r impute}
+myImputedTable <- myTable
+
+for (i in 1:dim(myTable)[1]){            #Loop through each row of the full dataset
+  if (is.na(myTable$steps[i])){          #Stop at each row where steps is NA
+    validInterval <- filter(myIntervalTable, interval == myTable$interval[i]) #Get the average non-NA value for this interval
+    myImputedTable$steps[i] <- as.integer(validInterval[2]) #Update the dataset
+  }
+} 
+```
+
+Taking this imputed dataset, grouping it by date and summarizing by sum of steps allows the calculation of daily total steps and mean and median number of steps.
+
+```{r groupImpute}
+myGroupImputedTable <- group_by(myImputedTable, date) %>%
+  summarize(sum(steps))
+colnames(myGroupImputedTable) <- c("date", "sum")
+meanImputedStepsPerDay <- as.integer(mean(myGroupImputedTable$sum))
+medianImputedStepsPerDay <- median(myGroupImputedTable$sum)
+```
+
+Using this to produce the daily step histogram gives us:
+
+```{r imputedHist}
+hist(myGroupImputedTable$sum, col="blue", xlab = "Total Steps per Day (Imputed)", main = "Total Steps by Day (Imputed)", breaks=24)
+```  
+  
+  The overall shape of the histogram is unchanged, though the frequency of the maximium steps per day is increased.  
+  
+  Our imputed mean steps per day is ***`r meanImputedStepsPerDay`***, which is **`r meanTotalStepsPerDay - meanImputedStepsPerDay`** less than the unimputed dataset.  
+  
+  The imputed median is ***`r medianImputedStepsPerDay`*** which is **`r medianTotalStepsPerDay - medianImputedStepsPerDay`** less than the unimputed dataset.
+
+### Are there differences in activity patterns between weekdays and weekends
+
+First I add a column to the imputated dataset evaluating to true or false depending on whether or not a day is a weekday
+
+1. I use the 'mutate' function to add a weekday column
+2. The wday() function gives a value of 1 (Sunday) to 7 (Saturday) when given a date
+3. Using this to index the isWeekdayorWeekend vector will give the appropriate value for each date
+
+```{r weekdays}
+isWeekdayorWeekend <- c("Weekend", "Weekday", "Weekday", "Weekday", "Weekday", "Weekday", "Weekend")
+myFacetTable <- mutate(myImputedTable, weekday=isWeekdayorWeekend[wday(date)])
+myFacetTable <- group_by(myFacetTable, weekday, interval) %>%
+  summarize(mean(steps))
+colnames(myFacetTable) <- c("weekday", "interval", "steps")
+```
+  
+Then I use ggplot to output the series graph - same as before, average number of steps versus interval- but this time split into two panels depending on whether the row belongs to a "Weekday" or "Weekend".  
+
+```{r facetPlot}
+g <- ggplot(myFacetTable, aes(interval,steps)) + geom_line() + facet_grid(weekday ~ .)
+g <- g + labs(x = "Interval", y = "Number of Steps", title = "Average # of Steps: Weekday v Weekend")
+print(g)
+```
 
 
-
-## What is mean total number of steps taken per day?
-
-
-
-## What is the average daily activity pattern?
-
-
-
-## Imputing missing values
-
-
-
-## Are there differences in activity patterns between weekdays and weekends?
